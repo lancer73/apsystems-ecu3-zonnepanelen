@@ -62,6 +62,8 @@ GLOBAL_SENSOR_TYPES = [
         key="state",
         name="State",
         state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=UnitOfPower.WATT,
+        device_class=SensorDeviceClass.POWER,
     ),
     SensorEntityDescription(
         key="lifetime",
