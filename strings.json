@@ -1,0 +1,32 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Zonnepanelen",
+        "description": "Stel je zonnepanelen integratie in",
+        "data": {
+          "host": "IP-adres of hostname (zonder http://)",
+          "name": "Naam",
+          "scan_interval": "Vernieuwingsinterval (seconden)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Geen verbinding mogelijk, controleer het IP-adres"
+    },
+    "abort": {
+      "already_configured": "Deze host is al geconfigureerd"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Zonnepanelen Opties",
+        "description": "Pas de instellingen aan",
+        "data": {
+          "scan_interval": "Vernieuwingsinterval (seconden)"
+        }
+      }
+    }
+  }
+}
