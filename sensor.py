@@ -60,7 +60,7 @@ PANEL_SENSOR_TYPES = [
 GLOBAL_SENSOR_TYPES = [
     SensorEntityDescription(
         key="state",
-        name="State",
+        name="Power",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
