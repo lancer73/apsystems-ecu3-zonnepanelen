@@ -42,6 +42,18 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
     }
 )
 
+# Reconfigure only exposes the fields the user might realistically change on
+# an existing entry — host (e.g. ECU moved to a new IP) and scan interval.
+# The title/name is an identity property and is stable.
+STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_HOST): str,
+        vol.Optional(
+            CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL
+        ): _SCAN_INTERVAL_SELECTOR,
+    }
+)
+
 
 class CannotConnect(HomeAssistantError):
     """Error to indicate we cannot connect to the ECU."""
@@ -73,7 +85,7 @@ async def _async_test_connection(hass: HomeAssistant, host: str) -> None:
 class ZonnepanelenConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the config flow for Zonnepanelen."""
 
-    VERSION = 2
+    VERSION = 3
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -113,6 +125,71 @@ class ZonnepanelenConfigFlow(ConfigFlow, domain=DOMAIN):
         return self.async_show_form(
             step_id="user",
             data_schema=STEP_USER_DATA_SCHEMA,
+            errors=errors,
+        )
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle reconfiguration of an existing entry.
+
+        Users can change the host (e.g. the ECU moved to a new LAN IP) and
+        the scan interval without having to remove and re-add the
+        integration, which would also lose statistics history.
+        """
+        entry = self._get_reconfigure_entry()
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            try:
+                host = validate_host(user_input[CONF_HOST])
+            except ValueError:
+                errors["base"] = "invalid_host"
+            else:
+                # Allow the user to keep the same host (no-op) but block
+                # reusing *another* entry's host.
+                await self.async_set_unique_id(host.lower())
+                self._abort_if_unique_id_mismatch(reason="wrong_account")
+                self._abort_if_unique_id_configured()
+
+                try:
+                    await _async_test_connection(self.hass, host)
+                except CannotConnect:
+                    errors["base"] = "cannot_connect"
+                except Exception:  # noqa: BLE001 — last-resort for UI feedback
+                    _LOGGER.exception("Unexpected error probing ECU")
+                    errors["base"] = "unknown"
+                else:
+                    return self.async_update_reload_and_abort(
+                        entry,
+                        data_updates={
+                            CONF_HOST: host,
+                            CONF_SCAN_INTERVAL: user_input.get(
+                                CONF_SCAN_INTERVAL,
+                                entry.data.get(
+                                    CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                                ),
+                            ),
+                        },
+                    )
+
+        # Pre-fill with the entry's current values.
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    CONF_HOST, default=entry.data.get(CONF_HOST, "")
+                ): str,
+                vol.Optional(
+                    CONF_SCAN_INTERVAL,
+                    default=entry.data.get(
+                        CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                    ),
+                ): _SCAN_INTERVAL_SELECTOR,
+            }
+        )
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=schema,
             errors=errors,
         )
 

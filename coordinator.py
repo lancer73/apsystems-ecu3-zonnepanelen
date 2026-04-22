@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, REQUEST_TIMEOUT
+from .const import DOMAIN, GLOBAL_KEYS, REQUEST_TIMEOUT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -66,6 +66,11 @@ class ZonnepanelenDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.host: str = host
         self._session: ClientSession = async_get_clientsession(hass)
         self._timeout = ClientTimeout(total=REQUEST_TIMEOUT)
+        # High-water mark of the number of panels the ECU has reported during
+        # this HA session. Used by the problem binary sensor to detect
+        # missing inverters. Resets on HA restart — see CHANGES.md for the
+        # known-limitation note.
+        self.max_panel_count: int = 0
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the ECU and parse the HTML pages.
@@ -93,6 +98,16 @@ class ZonnepanelenDataCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if not data:
             raise UpdateFailed("ECU returned no parseable data")
+
+        # Update the high-water mark. We only ever grow it — dropping panels
+        # is precisely the failure mode we want the problem sensor to detect.
+        panel_count = sum(
+            1
+            for key, value in data.items()
+            if key not in GLOBAL_KEYS and isinstance(value, dict)
+        )
+        if panel_count > self.max_panel_count:
+            self.max_panel_count = panel_count
 
         return data
 

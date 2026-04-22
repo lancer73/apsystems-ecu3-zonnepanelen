@@ -6,14 +6,14 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_HOST, CONF_SCAN_INTERVAL, Platform
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, GLOBAL_KEYS
 from .coordinator import ZonnepanelenDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
 # Typed ConfigEntry alias — makes ``entry.runtime_data`` properly typed.
 # (See Home Assistant developer blog, "Store runtime data inside the config entry".)
@@ -69,10 +69,14 @@ async def async_migrate_entry(
 ) -> bool:
     """Migrate a config entry from an older version.
 
-    v1 → v2: rewrite entity ``unique_id`` values to include the config entry
-    ID. The old scheme was ``zonnepanelen_<key>_<key>`` for system sensors and
-    ``zonnepanelen_<panel_id>_<key>`` for panel sensors; both could collide if
-    more than one ECU was set up and were not tied to the config entry.
+    v1 → v2: rewrite entity ``unique_id`` values and device identifiers to
+        include the config entry ID. The old scheme was ``zonnepanelen_<key>``
+        device identifiers and ``zonnepanelen_<key>_<key>`` unique_ids; both
+        could collide across multiple ECU instances.
+    v2 → v3: clean up orphaned old-style devices left behind by v2.0.0, which
+        only migrated entity unique_ids (not device identifiers). The original
+        ``(DOMAIN, "system")`` / ``(DOMAIN, <panel_id>)`` device records stayed
+        in the registry without any entities attached.
     """
     _LOGGER.debug(
         "Migrating Zonnepanelen entry from version %s.%s",
@@ -80,11 +84,12 @@ async def async_migrate_entry(
         entry.minor_version,
     )
 
-    if entry.version == 1:
-        entry_id = entry.entry_id
+    entry_id = entry.entry_id
 
+    if entry.version == 1:
+        # --- Entity unique_id migration -------------------------------------
         @callback
-        def _migrate(
+        def _migrate_entity(
             registry_entry: er.RegistryEntry,
         ) -> dict[str, str] | None:
             old = registry_entry.unique_id
@@ -116,9 +121,90 @@ async def async_migrate_entry(
 
             return None
 
-        await er.async_migrate_entries(hass, entry_id, _migrate)
+        await er.async_migrate_entries(hass, entry_id, _migrate_entity)
+
+        # --- Device identifier migration -----------------------------------
+        # The v2.0.0 release missed this step, which left future upgraders
+        # in an inconsistent state (old empty device records + new device
+        # records carrying all the entities). Doing it here during v1→v2
+        # means a fresh upgrade from v1 never sees that state — the device
+        # records are renamed in place and the entities re-attach to them
+        # when the platforms set up.
+        dev_reg = dr.async_get(hass)
+        for device in list(
+            dr.async_entries_for_config_entry(dev_reg, entry_id)
+        ):
+            new_identifiers: set[tuple[str, str]] = set()
+            changed = False
+            for domain, ident in device.identifiers:
+                if domain == DOMAIN and not ident.startswith(f"{entry_id}_"):
+                    new_identifiers.add((domain, f"{entry_id}_{ident}"))
+                    changed = True
+                else:
+                    new_identifiers.add((domain, ident))
+            if changed:
+                _LOGGER.info(
+                    "Migrating device identifiers for %s: %s → %s",
+                    device.name or device.id,
+                    device.identifiers,
+                    new_identifiers,
+                )
+                dev_reg.async_update_device(
+                    device.id, new_identifiers=new_identifiers
+                )
 
         hass.config_entries.async_update_entry(entry, version=2)
+
+    if entry.version == 2:
+        # v2 → v3: for users upgrading from 2.0.0, the device identifier
+        # migration above never ran. Their entities are already attached to
+        # new-style devices (created automatically by HA when 2.0.0's sensors
+        # came up). The old-style device records remain as empty orphans.
+        # Remove any device under this entry whose identifiers are all
+        # old-style and carry no entities.
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        for device in list(
+            dr.async_entries_for_config_entry(dev_reg, entry_id)
+        ):
+            # Classify the device's Zonnepanelen identifiers.
+            zp_idents = [
+                ident
+                for (domain, ident) in device.identifiers
+                if domain == DOMAIN
+            ]
+            if not zp_idents:
+                continue
+            is_old_style = all(
+                not ident.startswith(f"{entry_id}_") for ident in zp_idents
+            )
+            if not is_old_style:
+                continue
+
+            # Only remove if no entities are left pinned to this device.
+            # (They shouldn't be — the unique_id migration in v2.0.0 caused
+            # them to re-attach to new-style devices — but be defensive.)
+            linked = er.async_entries_for_device(
+                ent_reg, device.id, include_disabled_entities=True
+            )
+            if linked:
+                _LOGGER.warning(
+                    "Old-style device %s still has %s entities attached; "
+                    "leaving it in place to avoid data loss",
+                    device.name or device.id,
+                    len(linked),
+                )
+                continue
+
+            _LOGGER.info(
+                "Removing orphaned old-style device %s (identifiers=%s)",
+                device.name or device.id,
+                device.identifiers,
+            )
+            dev_reg.async_remove_device(device.id)
+
+        hass.config_entries.async_update_entry(entry, version=3)
 
     _LOGGER.debug("Migration to version %s complete", entry.version)
     return True

@@ -13,6 +13,18 @@
           "host": "Lokaal IP of hostname van je APsystems ECU-3.",
           "scan_interval": "Hoe vaak (in seconden) de gegevens worden opgehaald. Tussen 30 en 3600."
         }
+      },
+      "reconfigure": {
+        "title": "Zonnepanelen opnieuw configureren",
+        "description": "Werk het IP-adres of vernieuwingsinterval bij zonder de integratie te verwijderen. De bestaande entiteiten en historie blijven behouden.",
+        "data": {
+          "host": "IP-adres of hostname (zonder http://)",
+          "scan_interval": "Vernieuwingsinterval (seconden)"
+        },
+        "data_description": {
+          "host": "Lokaal IP of hostname van je APsystems ECU-3.",
+          "scan_interval": "Hoe vaak (in seconden) de gegevens worden opgehaald. Tussen 30 en 3600."
+        }
       }
     },
     "error": {
@@ -21,7 +33,9 @@
       "unknown": "Onverwachte fout, zie de logs"
     },
     "abort": {
-      "already_configured": "Deze host is al geconfigureerd"
+      "already_configured": "Deze host is al geconfigureerd",
+      "wrong_account": "Dit IP-adres hoort bij een andere ECU. Gebruik het originele adres of verwijder de integratie en voeg deze opnieuw toe.",
+      "reconfigure_successful": "Configuratie bijgewerkt"
     }
   },
   "options": {
@@ -36,6 +50,19 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "problem": {
+        "name": "Probleem",
+        "state_attributes": {
+          "problem_reasons": { "name": "Redenen" },
+          "missing_inverter_count": { "name": "Ontbrekende omvormers" },
+          "reporting_inverters": { "name": "Rapporterende omvormers" },
+          "expected_inverters": { "name": "Verwachte omvormers" },
+          "underperforming_panels": { "name": "Onderpresterende panelen" },
+          "daylight_window_open": { "name": "Daglichtvenster open" }
+        }
+      }
+    },
     "sensor": {
       "system_power": { "name": "Actueel vermogen" },
       "lifetime_energy": { "name": "Totale energieopbrengst" },

@@ -19,3 +19,22 @@ GLOBAL_KEYS: Final = frozenset({"state", "lifetime", "day", "online", "signal"})
 
 # HTTP timeout for requests against the ECU web interface.
 REQUEST_TIMEOUT: Final = 10  # seconds
+
+# ── Problem-detection thresholds ────────────────────────────────────────────
+# "More than two inverters not reporting" — strictly greater than this.
+MAX_MISSING_INVERTERS: Final = 2
+
+# A panel is underperforming if its power is below this ratio of the other
+# panels' mean power.
+UNDERPERFORMANCE_RATIO: Final = 0.25
+
+# Only compare panel power when the *others'* mean is at least this many
+# watts, otherwise morning ramp-up / evening wind-down and shade produce
+# meaningless ratios. The user-requested gate is "average higher than 25 W".
+MIN_MEAN_POWER_FOR_RATIO_CHECK: Final = 25.0  # watts
+
+# Daylight-window definition: we only flag "inverter offline" problems once
+# the sun has climbed past this elevation OR it's been this long past
+# sunrise — whichever comes first.
+DAYLIGHT_ELEVATION_DEG: Final = 10.0
+DAYLIGHT_POST_SUNRISE_MINUTES: Final = 60

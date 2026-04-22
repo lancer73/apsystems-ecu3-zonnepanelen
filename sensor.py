@@ -11,7 +11,6 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    PERCENTAGE,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
@@ -101,8 +100,11 @@ GLOBAL_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="signal",
         translation_key="signal_strength",
-        native_unit_of_measurement=PERCENTAGE,
-        state_class=SensorStateClass.MEASUREMENT,
+        # No ``native_unit_of_measurement`` — the ECU-3 reports this field as
+        # an opaque string and its meaning is firmware-dependent. Declaring
+        # a unit (e.g. %) would be a guess. Users can inspect the raw value
+        # via Download diagnostics and, if their firmware does return a true
+        # percentage, add a template sensor or request a unit upstream.
     ),
 )
 
