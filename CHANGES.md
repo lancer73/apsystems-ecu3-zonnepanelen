@@ -1,7 +1,28 @@
 # Zonnepanelen integration — 2026.4 compatibility review
  
 Target: Home Assistant 2025.5 → 2026.4. Delivered as a drop-in replacement
-under `custom_components/zonnepanelen/`. Current version: **2.1.2**.
+under `custom_components/zonnepanelen/`. Current version: **2.1.3**.
+ 
+## v2.1.3 — manual device deletion from the UI
+ 
+Adds `async_remove_config_entry_device` to `__init__.py`. HA only shows
+the "Delete" button on a device tied to a config entry when the
+integration opts in via this hook. The handler is deliberately
+restrictive: it returns `True` (allow deletion) only for devices whose
+Zonnepanelen identifiers do **not** correspond to a currently-reporting
+ECU component. In practice:
+ 
+- The system device is always protected while the entry is loaded.
+- Panels currently present in `coordinator.data` are protected.
+- Pre-1.0.0 orphans, panels whose inverters have been physically
+  removed, and any other device with no live identifier are deletable
+  from **Settings → Devices & Services → Zonnepanelen → [device] → ⋮ →
+  Delete**.
+Entity history survives manual device deletion for active devices too
+(it's keyed by entity `unique_id`), but device-level customisations —
+area assignment, manual device name, manually-disabled flag,
+`device_id`-based automation targets — do not. The protection is meant
+to prevent losing those by mistake.
  
 ## v2.1.2 — signal-strength unit reverted
  
@@ -198,6 +219,9 @@ to `home-assistant/brands` if you want the icon to appear on older versions.
   dedicated dark variants if you want a tuned look.
 - **Persistent expected-inverter count.** `max_panel_count` is in-memory
   only and resets on HA restart, so "missing inverter" detection takes one
+  successful poll after restart before it can fire. Persisting to
+  `Store` would avoid this but adds write traffic on every update; deemed
+  not worth it for a local-polling integration that restarts infrequently.
   successful poll after restart before it can fire. Persisting to
   `Store` would avoid this but adds write traffic on every update; deemed
   not worth it for a local-polling integration that restarts infrequently.
