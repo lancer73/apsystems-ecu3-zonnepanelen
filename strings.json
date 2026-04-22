@@ -8,11 +8,17 @@
           "host": "IP-adres of hostname (zonder http://)",
           "name": "Naam",
           "scan_interval": "Vernieuwingsinterval (seconden)"
+        },
+        "data_description": {
+          "host": "Lokaal IP of hostname van je APsystems ECU-3.",
+          "scan_interval": "Hoe vaak (in seconden) de gegevens worden opgehaald. Tussen 30 en 3600."
         }
       }
     },
     "error": {
-      "cannot_connect": "Geen verbinding mogelijk, controleer het IP-adres"
+      "cannot_connect": "Geen verbinding mogelijk, controleer het IP-adres",
+      "invalid_host": "Ongeldige hostname of IP-adres",
+      "unknown": "Onverwachte fout, zie de logs"
     },
     "abort": {
       "already_configured": "Deze host is al geconfigureerd"
@@ -27,6 +33,19 @@
           "scan_interval": "Vernieuwingsinterval (seconden)"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "system_power": { "name": "Actueel vermogen" },
+      "lifetime_energy": { "name": "Totale energieopbrengst" },
+      "daily_energy": { "name": "Dagopbrengst" },
+      "online_inverters": { "name": "Actieve omvormers" },
+      "signal_strength": { "name": "Signaalsterkte" },
+      "panel_power": { "name": "Vermogen" },
+      "panel_voltage": { "name": "Spanning" },
+      "panel_frequency": { "name": "Frequentie" },
+      "panel_temperature": { "name": "Temperatuur" }
     }
   }
 }

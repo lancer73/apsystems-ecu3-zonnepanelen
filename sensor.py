@@ -1,6 +1,8 @@
-"""Support for Zonnepanelen sensors."""
+"""Sensor platform for the Zonnepanelen integration."""
+from __future__ import annotations
+
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -8,8 +10,8 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
+    PERCENTAGE,
     UnitOfElectricPotential,
     UnitOfEnergy,
     UnitOfFrequency,
@@ -17,264 +19,223 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import ZonnepanelenDataCoordinator
-from .const import DOMAIN
+from . import ZonnepanelenConfigEntry
+from .const import DOMAIN, GLOBAL_KEYS, MANUFACTURER, MODEL_ECU, MODEL_INVERTER
+from .coordinator import ZonnepanelenDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PANEL_SENSOR_TYPES = [
+# Device classes whose state must be numeric.
+_NUMERIC_DEVICE_CLASSES = frozenset(
+    {
+        SensorDeviceClass.ENERGY,
+        SensorDeviceClass.POWER,
+        SensorDeviceClass.VOLTAGE,
+        SensorDeviceClass.FREQUENCY,
+        SensorDeviceClass.TEMPERATURE,
+    }
+)
+
+PANEL_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="power",
-        name="Power",
+        translation_key="panel_power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key="volt",
-        name="Voltage",
+        translation_key="panel_voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key="freq",
-        name="Frequency",
+        translation_key="panel_frequency",
         native_unit_of_measurement=UnitOfFrequency.HERTZ,
         device_class=SensorDeviceClass.FREQUENCY,
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key="temp",
-        name="Temperature",
+        translation_key="panel_temperature",
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-]
+)
 
-GLOBAL_SENSOR_TYPES = [
+GLOBAL_SENSOR_TYPES: tuple[SensorEntityDescription, ...] = (
     SensorEntityDescription(
         key="state",
-        name="Power",
-        state_class=SensorStateClass.MEASUREMENT,
+        translation_key="system_power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
+        state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key="lifetime",
-        name="Lifetime Energy",
+        translation_key="lifetime_energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     SensorEntityDescription(
         key="day",
-        name="Daily Energy",
+        translation_key="daily_energy",
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
     ),
     SensorEntityDescription(
         key="online",
-        name="Online Inverters",
+        translation_key="online_inverters",
         state_class=SensorStateClass.MEASUREMENT,
     ),
     SensorEntityDescription(
         key="signal",
-        name="Signal Strength",
+        translation_key="signal_strength",
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
     ),
-]
-
-
-async def async_setup_platform(
-    hass: HomeAssistant,
-    config: ConfigType,
-    async_add_entities: AddEntitiesCallback,
-    discovery_info: Optional[DiscoveryInfoType] = None,
-) -> None:
-    """Set up the Zonnepanelen sensor platform."""
-    if discovery_info is None:
-        return
-
-    name = discovery_info["name"]
-    coordinator = hass.data[DOMAIN][name]
-
-    entities = []
-
-    # Add global sensors
-    for sensor_description in GLOBAL_SENSOR_TYPES:
-        if sensor_description.key in coordinator.data:
-            entities.append(
-                ZonnepanelenSensor(
-                    coordinator,
-                    coordinator.name,
-                    sensor_description,
-                    sensor_description.key,
-                )
-            )
-
-    # Add panel-specific sensors
-    for panel_id, panel_data in coordinator.data.items():
-        if panel_id not in ["state", "lifetime", "day", "online", "signal"]:
-            for sensor_description in PANEL_SENSOR_TYPES:
-                if sensor_description.key in panel_data:
-                    entities.append(
-                        ZonnepanelenSensor(
-                            coordinator,
-                            f"{config_entry.title} {panel_id}",
-                            sensor_description,
-                            panel_id,
-                            sensor_description.key,
-                        )
-                    )
-
-    async_add_entities(entities)
-
-
-class ZonnepanelenSensor(CoordinatorEntity, SensorEntity):
-    """Representation of a Zonnepanelen sensor."""
-
-    def __init__(
-        self,
-        coordinator,
-        name,
-        description,
-        panel_id,
-        data_key=None,
-    ):
-        """Initialize the sensor."""
-        super().__init__(coordinator)
-        self.entity_description = description
-        self._panel_id = panel_id
-        self._data_key = data_key or panel_id
-        self._attr_name = f"{name} {description.name}"
-        self._attr_unique_id = f"{DOMAIN}_{panel_id}_{self._data_key}"
-
-    @property
-    def native_value(self):
-        """Return the state of the sensor."""
-        try:
-            if self._data_key in ["state", "lifetime", "day", "online", "signal"]:
-                value = self.coordinator.data.get(self._data_key, "0")
-                # Convert to float for numerical sensors
-                if self.entity_description.device_class in [
-                    SensorDeviceClass.ENERGY,
-                    SensorDeviceClass.POWER,
-                    SensorDeviceClass.VOLTAGE,
-                    SensorDeviceClass.FREQUENCY,
-                    SensorDeviceClass.TEMPERATURE,
-                ]:
-                    try:
-                        return float(value)
-                    except (ValueError, TypeError):
-                        _LOGGER.warning("Unable to convert %s to float", value)
-                        return 0.0
-                return value
-            else:
-                value = self.coordinator.data.get(self._panel_id, {}).get(self._data_key, "0")
-                # Convert to float for numerical sensors
-                if self.entity_description.device_class in [
-                    SensorDeviceClass.ENERGY,
-                    SensorDeviceClass.POWER,
-                    SensorDeviceClass.VOLTAGE,
-                    SensorDeviceClass.FREQUENCY,
-                    SensorDeviceClass.TEMPERATURE,
-                ]:
-                    try:
-                        return float(value)
-                    except (ValueError, TypeError):
-                        _LOGGER.warning("Unable to convert %s to float", value)
-                        return 0.0
-                return value
-        except Exception as e:
-            _LOGGER.error("Error determining native value for %s: %s", self._attr_name, e)
-            return None
-            
-    @property
-    def available(self) -> bool:
-        """Return if entity is available."""
-        # First check if coordinator is available
-        if not self.coordinator.last_update_success:
-            return False
-            
-        # If it's a system-level sensor, always return availability based on coordinator
-        if self._data_key in ["lifetime", "day", "online", "signal"]:
-            return True
-            
-        # For 'state' sensor, always available to show system status
-        if self._data_key == "state":
-            return True
-            
-        # For panel-specific sensors, check if system is online (state != 0)
-        system_state = self.coordinator.data.get("state", "0")
-        if system_state == "0":
-            return False
-            
-        # Check if this specific panel has data
-        if self._panel_id not in self.coordinator.data:
-            return False
-            
-        return True
-
-    @property
-    def device_info(self):
-        """Return device information."""
-        if self._data_key in ["state", "lifetime", "day", "online", "signal"]:
-            return {
-                "identifiers": {(DOMAIN, "system")},
-                "name": f"{self.coordinator.name} System",
-                "manufacturer": "Zonnepanelen",
-            }
-        
-        return {
-            "identifiers": {(DOMAIN, self._panel_id)},
-            "name": f"{self.coordinator.name} {self._panel_id}",
-            "manufacturer": "Zonnepanelen",
-            "via_device": (DOMAIN, "system"),
-        }
+)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    entry: ZonnepanelenConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the Zonnepanelen sensor platform from config entry."""
-    coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    """Set up the sensor platform from a config entry."""
+    coordinator = entry.runtime_data
 
-    entities = []
+    entities: list[SensorEntity] = []
 
-    # Add global sensors
-    for sensor_description in GLOBAL_SENSOR_TYPES:
-        if sensor_description.key in coordinator.data:
+    for description in GLOBAL_SENSOR_TYPES:
+        if description.key in coordinator.data:
             entities.append(
-                ZonnepanelenSensor(
-                    coordinator,
-                    f"{config_entry.title}",
-                    sensor_description,
-                    sensor_description.key,
-                )
+                ZonnepanelenSystemSensor(coordinator, entry, description)
             )
 
-    # Add panel-specific sensors
     for panel_id, panel_data in coordinator.data.items():
-        if panel_id not in ["state", "lifetime", "day", "online", "signal"]:
-            for sensor_description in PANEL_SENSOR_TYPES:
-                if sensor_description.key in panel_data:
-                    entities.append(
-                        ZonnepanelenSensor(
-                            coordinator,
-                            f"{coordinator.name} {panel_id}",
-                            sensor_description,
-                            panel_id,
-                            sensor_description.key,
-                        )
+        if panel_id in GLOBAL_KEYS or not isinstance(panel_data, dict):
+            continue
+        for description in PANEL_SENSOR_TYPES:
+            if description.key in panel_data:
+                entities.append(
+                    ZonnepanelenPanelSensor(
+                        coordinator, entry, description, panel_id
                     )
+                )
 
     async_add_entities(entities)
+
+
+class _ZonnepanelenBaseSensor(
+    CoordinatorEntity[ZonnepanelenDataCoordinator], SensorEntity
+):
+    """Shared behaviour for all Zonnepanelen sensors."""
+
+    _attr_has_entity_name = True
+
+    def __init__(
+        self,
+        coordinator: ZonnepanelenDataCoordinator,
+        entry: ZonnepanelenConfigEntry,
+        description: SensorEntityDescription,
+    ) -> None:
+        """Initialise a sensor."""
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._entry_id = entry.entry_id
+
+    def _coerce(self, value: Any) -> Any:
+        """Cast the raw value to float when the device class requires it."""
+        if self.entity_description.device_class in _NUMERIC_DEVICE_CLASSES:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                _LOGGER.debug(
+                    "Non-numeric value %r for %s", value, self.entity_id
+                )
+                return None
+        return value
+
+
+class ZonnepanelenSystemSensor(_ZonnepanelenBaseSensor):
+    """Sensor representing the ECU system as a whole."""
+
+    def __init__(
+        self,
+        coordinator: ZonnepanelenDataCoordinator,
+        entry: ZonnepanelenConfigEntry,
+        description: SensorEntityDescription,
+    ) -> None:
+        super().__init__(coordinator, entry, description)
+        self._attr_unique_id = f"{entry.entry_id}_{description.key}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_system")},
+            name=entry.title,
+            manufacturer=MANUFACTURER,
+            model=MODEL_ECU,
+            configuration_url=f"http://{coordinator.host}/",
+        )
+
+    @property
+    def native_value(self) -> Any:
+        return self._coerce(self.coordinator.data.get(self.entity_description.key))
+
+
+class ZonnepanelenPanelSensor(_ZonnepanelenBaseSensor):
+    """Sensor for an individual panel / microinverter."""
+
+    def __init__(
+        self,
+        coordinator: ZonnepanelenDataCoordinator,
+        entry: ZonnepanelenConfigEntry,
+        description: SensorEntityDescription,
+        panel_id: str,
+    ) -> None:
+        super().__init__(coordinator, entry, description)
+        self._panel_id = panel_id
+        self._attr_translation_placeholders = {"panel_id": panel_id}
+        self._attr_unique_id = (
+            f"{entry.entry_id}_{panel_id}_{description.key}"
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, f"{entry.entry_id}_{panel_id}")},
+            name=f"Panel {panel_id}",
+            manufacturer=MANUFACTURER,
+            model=MODEL_INVERTER,
+            via_device=(DOMAIN, f"{entry.entry_id}_system"),
+        )
+
+    @property
+    def native_value(self) -> Any:
+        panel = self.coordinator.data.get(self._panel_id)
+        if not isinstance(panel, dict):
+            return None
+        return self._coerce(panel.get(self.entity_description.key))
+
+    @property
+    def available(self) -> bool:
+        # ``super().available`` already reflects the coordinator's
+        # ``last_update_success`` — if the ECU is unreachable the entity is
+        # unavailable regardless of what the last cached ``data`` says.
+        if not super().available:
+            return False
+        # The ECU reports state == "0" when the whole system is offline; there
+        # is no usable per-panel reading in that case.
+        if self.coordinator.data.get("state") == "0":
+            return False
+        # The panel must be present in the most recent update. When a panel
+        # drops out of the ECU's output (removed, offline for long enough that
+        # the ECU stops reporting it), the entity becomes unavailable instead
+        # of showing stale values.
+        return isinstance(self.coordinator.data.get(self._panel_id), dict)
