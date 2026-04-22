@@ -8,11 +8,17 @@
           "host": "IP address or hostname (without http://)",
           "name": "Name",
           "scan_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "host": "Local IP or hostname of your APsystems ECU-3.",
+          "scan_interval": "How often (in seconds) to poll the ECU. Between 30 and 3600."
         }
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect, please check the IP address"
+      "cannot_connect": "Failed to connect, please check the IP address",
+      "invalid_host": "Invalid hostname or IP address",
+      "unknown": "Unexpected error, see the logs"
     },
     "abort": {
       "already_configured": "This host is already configured"
@@ -27,6 +33,19 @@
           "scan_interval": "Update interval (seconds)"
         }
       }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "system_power": { "name": "Current power" },
+      "lifetime_energy": { "name": "Lifetime energy" },
+      "daily_energy": { "name": "Daily energy" },
+      "online_inverters": { "name": "Online inverters" },
+      "signal_strength": { "name": "Signal strength" },
+      "panel_power": { "name": "Power" },
+      "panel_voltage": { "name": "Voltage" },
+      "panel_frequency": { "name": "Frequency" },
+      "panel_temperature": { "name": "Temperature" }
     }
   }
 }
