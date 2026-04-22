@@ -13,6 +13,18 @@
           "host": "Local IP or hostname of your APsystems ECU-3.",
           "scan_interval": "How often (in seconds) to poll the ECU. Between 30 and 3600."
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure Zonnepanelen",
+        "description": "Update the ECU's IP address or the update interval without removing the integration. Existing entities and their history are preserved.",
+        "data": {
+          "host": "IP address or hostname (without http://)",
+          "scan_interval": "Update interval (seconds)"
+        },
+        "data_description": {
+          "host": "Local IP or hostname of your APsystems ECU-3.",
+          "scan_interval": "How often (in seconds) to poll the ECU. Between 30 and 3600."
+        }
       }
     },
     "error": {
@@ -21,7 +33,9 @@
       "unknown": "Unexpected error, see the logs"
     },
     "abort": {
-      "already_configured": "This host is already configured"
+      "already_configured": "This host is already configured",
+      "wrong_account": "That IP address belongs to a different ECU. Use the original address, or remove this integration and add it again.",
+      "reconfigure_successful": "Configuration updated"
     }
   },
   "options": {
@@ -36,6 +50,19 @@
     }
   },
   "entity": {
+    "binary_sensor": {
+      "problem": {
+        "name": "Problem",
+        "state_attributes": {
+          "problem_reasons": { "name": "Reasons" },
+          "missing_inverter_count": { "name": "Missing inverters" },
+          "reporting_inverters": { "name": "Reporting inverters" },
+          "expected_inverters": { "name": "Expected inverters" },
+          "underperforming_panels": { "name": "Underperforming panels" },
+          "daylight_window_open": { "name": "Daylight window open" }
+        }
+      }
+    },
     "sensor": {
       "system_power": { "name": "Current power" },
       "lifetime_energy": { "name": "Lifetime energy" },
