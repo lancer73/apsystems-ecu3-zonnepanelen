@@ -64,6 +64,45 @@ async def _async_update_listener(
     await hass.config_entries.async_reload(entry.entry_id)
 
 
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: ZonnepanelenConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Control whether a user may delete a device from the UI.
+
+    Returns True (the "Delete" button appears) only when none of the
+    device's Zonnepanelen identifiers match a currently-reporting ECU
+    component — i.e. the device is an orphan (pre-1.0.0 leftover, a panel
+    that has been physically removed, etc.). Active system and panel
+    devices are protected: deleting them at random would drop their
+    area/name/disabled-state customisations and cause HA to immediately
+    re-create them on the next coordinator refresh.
+    """
+    coordinator = config_entry.runtime_data
+    entry_id = config_entry.entry_id
+
+    # Build the set of identifiers that correspond to things the ECU is
+    # currently reporting. The system device is always considered "live"
+    # while the entry is loaded — if the ECU is unreachable the
+    # coordinator will already have flipped its entities unavailable and
+    # the user can reconfigure instead of deleting.
+    live_identifiers: set[str] = {f"{entry_id}_system"}
+    data = coordinator.data or {}
+    for key, value in data.items():
+        if key in GLOBAL_KEYS or not isinstance(value, dict):
+            continue
+        live_identifiers.add(f"{entry_id}_{key}")
+
+    # Refuse deletion if any of the device's Zonnepanelen identifiers
+    # matches a live component.
+    for domain, ident in device_entry.identifiers:
+        if domain == DOMAIN and ident in live_identifiers:
+            return False
+
+    return True
+
+
 async def async_migrate_entry(
     hass: HomeAssistant, entry: ZonnepanelenConfigEntry
 ) -> bool:
