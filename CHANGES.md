@@ -72,6 +72,43 @@ Files changed: `const.py`, `binary_sensor.py`, `config_flow.py`,
 `strings.json`, `translations/en.json`, `translations/nl.json`,
 `manifest.json`, `README.md`, `CHANGES.md`.
 
+### Repository restructure
+
+Also in 2.3.0: the repo is now HACS-standard layout. Everything that
+runs inside Home Assistant lives under `custom_components/zonnepanelen/`;
+repo-level metadata (`README.md`, `CHANGES.md`, `hacs.json`, `LICENSE`,
+`brand/`) stays at the root. Rationale:
+
+- `hacs.json` already had `"content_in_root": false` — HACS was
+  expecting the standard layout all along; the flat repo was working
+  by accident (users following the manual-install instructions had to
+  create the `custom_components/zonnepanelen/` directory themselves,
+  which is what the README already told them to do).
+- The README's manual-install instructions now match reality: copy
+  `custom_components/zonnepanelen/` from the repo into
+  `<config>/custom_components/` on the HA host.
+- No import changes — everything in the package uses relative
+  imports (`from .const import …`), and the package name
+  `zonnepanelen` matches `DOMAIN`.
+
+Use `git mv` rather than delete-and-recreate when applying the
+restructure locally, so per-file history survives:
+
+```
+mkdir -p custom_components/zonnepanelen
+git mv __init__.py binary_sensor.py config_flow.py const.py \
+       coordinator.py diagnostics.py manifest.json sensor.py \
+       strings.json translations custom_components/zonnepanelen/
+```
+
+### LICENSE
+
+Also in 2.3.0: added an MIT `LICENSE` file at the repo root. The
+README previously referred to a `LICENSE` file that didn't exist.
+MIT was picked as the most common choice for small HACS integrations
+and the lightest-weight permissive option; no contributor agreement
+or copyleft to think about. The copyright holder is `lancer73`.
+
 ## v2.2.0 — configurable problem-sensor thresholds
 
 The problem binary sensor had two hardcoded behaviours that made it
@@ -338,9 +375,6 @@ to `home-assistant/brands` if you want the icon to appear on older versions.
   dedicated dark variants if you want a tuned look.
 - **Persistent expected-inverter count.** `max_panel_count` is in-memory
   only and resets on HA restart, so "missing inverter" detection takes one
-  successful poll after restart before it can fire. Persisting to
-  `Store` would avoid this but adds write traffic on every update; deemed
-  not worth it for a local-polling integration that restarts infrequently.
   successful poll after restart before it can fire. Persisting to
   `Store` would avoid this but adds write traffic on every update; deemed
   not worth it for a local-polling integration that restarts infrequently.
