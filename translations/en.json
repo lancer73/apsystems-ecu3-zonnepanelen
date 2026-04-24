@@ -44,7 +44,14 @@
         "title": "Zonnepanelen Options",
         "description": "Adjust settings",
         "data": {
-          "scan_interval": "Update interval (seconds)"
+          "scan_interval": "Update interval (seconds)",
+          "underperformance_percent": "Underperformance threshold (%)",
+          "excluded_panels": "Excluded panels"
+        },
+        "data_description": {
+          "scan_interval": "How often (in seconds) to poll the ECU. Between 30 and 3600.",
+          "underperformance_percent": "A panel is flagged as underperforming when its power drops below this percentage of the other panels' mean. Default 10. Lower values reduce false alarms from partial shading; higher values catch milder degradation earlier.",
+          "excluded_panels": "Panels to exclude from the problem sensor. Typical use: a microinverter with only one panel physically attached, where the unused channel reports 0 W permanently."
         }
       }
     }
@@ -59,6 +66,8 @@
           "reporting_inverters": { "name": "Reporting inverters" },
           "expected_inverters": { "name": "Expected inverters" },
           "underperforming_panels": { "name": "Underperforming panels" },
+          "underperformance_percent": { "name": "Underperformance threshold (%)" },
+          "excluded_panels": { "name": "Excluded panels" },
           "daylight_window_open": { "name": "Daylight window open" }
         }
       }
