@@ -293,4 +293,8 @@ in the original repository.
  
 ## License
  
+MIT. See `LICENSE` in the repository root.
+
+## License
+ 
 See `LICENSE` in the repository root.
