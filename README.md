@@ -47,16 +47,25 @@ Dashboard out of the box.
 `binary_sensor.<n>_problem` turns on when **any** of the following
 holds:
  
-1. **Missing inverters during daylight.** More than two fewer inverters
-   are reporting than at the session's peak, AND we're inside the
-   daylight window — defined as *sun elevation ≥ 10°* OR *more than 60
-   minutes past today's local sunrise* (and before sunset). This avoids
-   alarms during a normal sunrise ramp-up.
+1. **Missing inverters during daylight.** At least N inverters are
+   missing (default N = 2 against the session's high-water mark),
+   AND we're inside the daylight window. The daylight window is
+   defined as *sun elevation ≥ 10°* OR *more than 60 minutes past
+   today's local sunrise* (and before sunset). This avoids alarms
+   during a normal sunrise ramp-up. The threshold N is configurable
+   via the options flow.
 2. **Underperforming panel.** Any panel is producing less than the
    configured threshold (default **10%**) of the mean of the others,
    gated on that mean being at least 25 W (so morning ramp-up and
    overcast conditions don't generate noise). The threshold can be
    adjusted via the options flow — see *Configuration* below.
+
+Optionally, the daylight window can be further gated on an
+illuminance (lux) sensor from another integration — useful to
+suppress false alarms on dark winter days when the sun is
+technically above 10° but actual production is negligible. See
+*Options* below.
+
 The sensor returns *unknown* while the ECU is unreachable, so it
 doesn't false-fire during a brief network outage.
  
@@ -64,9 +73,12 @@ Useful attributes (for dashboards and automations):
  
 - `problem_reasons` — human-readable list of what's wrong right now.
 - `missing_inverter_count`, `reporting_inverters`, `expected_inverters`.
+- `min_missing_inverters` — the missing-inverter threshold in effect.
 - `underperforming_panels` — list of panel IDs currently below the ratio.
 - `underperformance_percent` — the threshold in effect (default 10).
 - `excluded_panels` — panel IDs the user has excluded from checks.
+- `illuminance_entity` — the optional lux sensor, or `None`.
+- `min_illuminance` — the lux threshold in effect, when an entity is set.
 - `daylight_window_open` — whether the missing-inverter check is active.
 ## Requirements
  
@@ -119,10 +131,24 @@ Open **Settings → Devices & Services → Zonnepanelen → Configure** to
 adjust the problem-sensor behaviour:
 
 - **Update interval** — seconds between polls (30–3600).
+- **Minimum missing inverters to trigger** — the problem sensor fires
+  when at least this many inverters are missing (inside the daylight
+  window). Default 2. Range 1–50.
 - **Underperformance threshold (%)** — a panel is flagged when its
   power drops below this percentage of the other panels' mean. Default
   10. Lower values reduce false alarms from partial shading; higher
   values catch milder degradation earlier. Valid range: 1–100.
+- **Illuminance sensor (optional)** — an `illuminance` device-class
+  sensor from another integration. When set, the daylight window only
+  opens when **both** the sun-based check passes **and** this sensor
+  reads at or above the threshold below. Useful to suppress false
+  alarms on dark winter days when the sun is technically high enough
+  but actual irradiance is negligible. If the configured sensor
+  becomes unavailable, the integration falls back to the sun-only
+  check and logs one warning per outage.
+- **Minimum illuminance for problem window** — threshold for the lux
+  sensor (100–10000 lx). Default 700. Only applies when an
+  illuminance sensor is selected; otherwise ignored.
 - **Excluded panels** — pick one or more panel IDs to exclude from the
   problem sensor. Excluded panels are dropped from both the
   underperformance check (not a candidate, not part of the reference
@@ -134,12 +160,18 @@ adjust the problem-sensor behaviour:
 The panel picker only appears after the integration has had at least
 one successful poll, because panel IDs come from the ECU. If you open
 the options page on a brand-new entry before the first refresh has
-completed, the threshold and interval fields still render — re-open it
-after the first poll to see the panel list.
+completed, the other fields still render — re-open it after the first
+poll to see the panel list.
 
 The panel list shows the union of panels currently reporting plus any
 already excluded, so a panel can be un-excluded even while it is
 offline.
+
+The lux gate is re-evaluated on each coordinator tick (same cadence
+as the ECU poll), not on each lux-sensor state change. This matches
+the rest of the sensor's evaluation model; expect up to one poll
+interval of lag between a lux change and the problem-sensor
+response.
  
 ### Reconfiguring
  
@@ -202,6 +234,13 @@ v2.2.0 lowered the default underperformance threshold from 25% to 10%
 and made it configurable. Existing installs pick up the new default on
 upgrade; no migration runs. If you were relying on the previous 25%
 behaviour, set the threshold to 25 via the options flow.
+
+v2.3.0 made the missing-inverter threshold configurable and flipped
+the comparison semantic. Pre-2.3.0: fires on **strictly more than 2**
+missing (i.e. 3+). 2.3.0+: fires on **at least N** missing, with N
+defaulting to 2 — which means 2+ now fires. To restore the old
+behaviour exactly, set **Minimum missing inverters to trigger** to 3
+in the options flow.
  
 Any automations that addressed the old devices **by `device_id`** need
 re-pointing — either at the new device or (preferably) at the entities
@@ -222,9 +261,24 @@ by `entity_id`.
   at 10° sun elevation OR 60 minutes past sunrise — if your site is
   heavily shaded at that time, the underperformance check can still
   pick up legitimately-dim panels. Either lower the underperformance
-  threshold further in the options flow, suppress the automation using
-  the `daylight_window_open` attribute, or gate on a sun-elevation
+  threshold further in the options flow, configure an illuminance
+  sensor with a suitable threshold, suppress the automation using the
+  `daylight_window_open` attribute, or gate on a sun-elevation
   condition.
+- **Problem sensor never fires in winter.** If you've configured a lux
+  sensor, check that its readings actually clear the configured
+  threshold during daylight. On truly overcast winter days, peak
+  indoor-measured lux can stay well below 700 lx even at solar noon —
+  that's the point of the gate, but if it's suppressing *real*
+  problems you want flagged, lower the threshold or remove the sensor.
+  The `daylight_window_open` attribute and the `illuminance_entity` /
+  `min_illuminance` attributes let you see what the sensor is doing.
+- **Lux sensor went offline.** The integration falls back to the
+  sun-only check and logs one warning
+  (`Illuminance sensor … is unavailable; falling back to sun-based
+  daylight window only`). You won't get a fresh warning every poll —
+  only one per failure episode. The warning repeats if the sensor
+  recovers and then fails again.
 - **One channel of a dual-inverter always flags.** A microinverter
   with only one panel attached will report 0 W on its unused channel
   indefinitely. Add that panel ID to **Excluded panels** in the options

@@ -1,7 +1,76 @@
 # Zonnepanelen integration — 2026.4 compatibility review
  
 Target: Home Assistant 2025.5 → 2026.4. Delivered as a drop-in replacement
-under `custom_components/zonnepanelen/`. Current version: **2.2.0**.
+under `custom_components/zonnepanelen/`. Current version: **2.3.0**.
+
+## v2.3.0 — configurable missing-inverter threshold + optional lux gate
+
+Two further knobs on the problem sensor, both driven by real-world
+false positives:
+
+- The missing-inverter count was hardcoded at "more than 2 missing".
+  Fine for most arrays, wrong for smaller ones or for users who want
+  to be alerted on a single outage.
+- The daylight window was sun-only. On dark winter days the sun is
+  technically above 10° but actual irradiance is negligible; the
+  existing underperformance check can still mis-fire because the
+  reference mean is already tiny but not quite under the 25 W gate.
+
+Changes:
+
+- **`CONF_MIN_MISSING_INVERTERS`** added to the options flow
+  (range 1–50, default 2). The comparison semantic flipped from
+  `missing > N` (pre-2.3.0, with N=2) to `missing >= N` (now, with
+  N=2). Same constant, different operator — which is a behaviour
+  change: the pre-2.3.0 code fired on 3+ missing, the new default
+  fires on 2+ missing. The README migration section calls this out
+  and tells users how to restore the old behaviour (set the option
+  to 3).
+- **`CONF_ILLUMINANCE_ENTITY`** added to the options flow — an
+  `EntitySelector` filtered to `sensor` entities with
+  `device_class: illuminance`. When set, the daylight window only
+  opens when **both** the sun-based check passes **and** the lux
+  sensor reads at or above the threshold. **Fail-open semantics:**
+  if the sensor is `unavailable`, `unknown`, or reports a
+  non-numeric state, the integration falls back to the sun-only
+  check and logs a single warning. The warning is latched per
+  failure episode — we log once, clear on recovery, re-log on the
+  next failure. Avoids log spam while still surfacing that
+  something's wrong.
+- **`CONF_MIN_ILLUMINANCE`** added (range 100–10000 lx, default 700).
+  Rendered as a NumberSelector with unit `lx`. Ignored when no
+  illuminance entity is configured; dropped from options on save if
+  the entity field is cleared.
+- **New attributes** on the problem sensor: `min_missing_inverters`,
+  `illuminance_entity`, `min_illuminance`. The lux attributes are
+  `None` when no entity is configured, so automations can branch on
+  whether the gate is in effect.
+- **Evaluation cadence.** The lux gate is re-evaluated on each
+  coordinator tick, not on lux-sensor state changes. This matches
+  the rest of the sensor's evaluation model (it's a
+  `CoordinatorEntity`). Documented in the README so users know to
+  expect up to one poll interval of lag. Adding
+  `async_track_state_change_event` was considered and rejected as
+  unnecessary complexity for a slow-moving indicator.
+- **Helper refactor.** The module-level `_in_daylight_window` was
+  renamed to `_in_sun_daylight_window` (it's the sun-only gate now);
+  the combined AND is a method on the sensor class,
+  `_daylight_window_open`. Keeps the lux-state / warning-latch on
+  the instance where it belongs.
+- **`MAX_MISSING_INVERTERS`** constant removed from `const.py`.
+  Replaced by `DEFAULT_MIN_MISSING_INVERTERS` /
+  `MIN_MIN_MISSING_INVERTERS` / `MAX_MIN_MISSING_INVERTERS`.
+- **Strings** added to `strings.json` (Dutch) and mirrored to
+  `translations/en.json` and `translations/nl.json`.
+- **README** updated with the new options, troubleshooting for both
+  the "lux sensor offline" and "sensor never fires in winter" cases,
+  and the migration note about the flipped comparison semantic.
+- **Version bumped** to `2.3.0` in `manifest.json`. New feature,
+  small behaviour change on an existing default — minor bump.
+
+Files changed: `const.py`, `binary_sensor.py`, `config_flow.py`,
+`strings.json`, `translations/en.json`, `translations/nl.json`,
+`manifest.json`, `README.md`, `CHANGES.md`.
 
 ## v2.2.0 — configurable problem-sensor thresholds
 
@@ -269,6 +338,9 @@ to `home-assistant/brands` if you want the icon to appear on older versions.
   dedicated dark variants if you want a tuned look.
 - **Persistent expected-inverter count.** `max_panel_count` is in-memory
   only and resets on HA restart, so "missing inverter" detection takes one
+  successful poll after restart before it can fire. Persisting to
+  `Store` would avoid this but adds write traffic on every update; deemed
+  not worth it for a local-polling integration that restarts infrequently.
   successful poll after restart before it can fire. Persisting to
   `Store` would avoid this but adds write traffic on every update; deemed
   not worth it for a local-polling integration that restarts infrequently.

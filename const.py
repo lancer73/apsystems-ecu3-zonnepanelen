@@ -23,8 +23,12 @@ REQUEST_TIMEOUT: Final = 10  # seconds
 
 # ── Problem-detection thresholds ────────────────────────────────────────────
 
-# "More than two inverters not reporting" — strictly greater than this.
-MAX_MISSING_INVERTERS: Final = 2
+# The problem sensor fires when at least this many inverters are missing,
+# measured against the per-session high-water mark. Default matches the
+# pre-2.3.0 behaviour: firing on 3+ missing ("more than 2").
+DEFAULT_MIN_MISSING_INVERTERS: Final = 2
+MIN_MIN_MISSING_INVERTERS: Final = 1
+MAX_MIN_MISSING_INVERTERS: Final = 50
 
 # A panel is underperforming if its power is below this ratio of the other
 # panels' mean power. This is the default — the user can override it via
@@ -42,6 +46,11 @@ MIN_MEAN_POWER_FOR_RATIO_CHECK: Final = 25.0  # watts
 DAYLIGHT_ELEVATION_DEG: Final = 10.0
 DAYLIGHT_POST_SUNRISE_MINUTES: Final = 60
 
+# Default illuminance threshold for the optional lux gate (lx).
+DEFAULT_MIN_ILLUMINANCE: Final = 700.0
+MIN_MIN_ILLUMINANCE: Final = 100
+MAX_MIN_ILLUMINANCE: Final = 10000
+
 # ── Options-flow keys ───────────────────────────────────────────────────────
 
 # List of panel IDs excluded from both underperformance and missing-inverter
@@ -55,3 +64,16 @@ CONF_EXCLUDED_PANELS: Final = "excluded_panels"
 CONF_UNDERPERFORMANCE_PERCENT: Final = "underperformance_percent"
 MIN_UNDERPERFORMANCE_PERCENT: Final = 1
 MAX_UNDERPERFORMANCE_PERCENT: Final = 100
+
+# Missing-inverter threshold. "Fire when at least this many inverters are
+# missing" — note the semantic flip from pre-2.3.0, which was "fire when
+# strictly more than N", with N defaulting to 2. Default 2 preserves the
+# behaviour (fires on 3+ missing) under the new semantic.
+CONF_MIN_MISSING_INVERTERS: Final = "min_missing_inverters"
+
+# Optional illuminance gate. When an entity_id is configured, the problem
+# window is only open when BOTH the sun-based check passes AND the lux
+# sensor reads at or above the threshold. If the sensor is unavailable,
+# the integration falls back to sun-only (fail-open) and logs a warning.
+CONF_ILLUMINANCE_ENTITY: Final = "illuminance_entity"
+CONF_MIN_ILLUMINANCE: Final = "min_illuminance"

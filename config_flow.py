@@ -18,6 +18,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    EntitySelector,
+    EntitySelectorConfig,
+    NumberSelector,
+    NumberSelectorConfig,
+    NumberSelectorMode,
     SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
@@ -26,13 +31,22 @@ from homeassistant.helpers.selector import (
 
 from .const import (
     CONF_EXCLUDED_PANELS,
+    CONF_ILLUMINANCE_ENTITY,
+    CONF_MIN_ILLUMINANCE,
+    CONF_MIN_MISSING_INVERTERS,
     CONF_UNDERPERFORMANCE_PERCENT,
+    DEFAULT_MIN_ILLUMINANCE,
+    DEFAULT_MIN_MISSING_INVERTERS,
     DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     GLOBAL_KEYS,
+    MAX_MIN_ILLUMINANCE,
+    MAX_MIN_MISSING_INVERTERS,
     MAX_SCAN_INTERVAL,
     MAX_UNDERPERFORMANCE_PERCENT,
+    MIN_MIN_ILLUMINANCE,
+    MIN_MIN_MISSING_INVERTERS,
     MIN_SCAN_INTERVAL,
     MIN_UNDERPERFORMANCE_PERCENT,
     REQUEST_TIMEOUT,
@@ -51,6 +65,25 @@ _UNDERPERFORMANCE_SELECTOR = vol.All(
     vol.Range(
         min=MIN_UNDERPERFORMANCE_PERCENT, max=MAX_UNDERPERFORMANCE_PERCENT
     ),
+)
+
+_MIN_MISSING_INVERTERS_SELECTOR = vol.All(
+    vol.Coerce(int),
+    vol.Range(min=MIN_MIN_MISSING_INVERTERS, max=MAX_MIN_MISSING_INVERTERS),
+)
+
+_MIN_ILLUMINANCE_SELECTOR = NumberSelector(
+    NumberSelectorConfig(
+        min=MIN_MIN_ILLUMINANCE,
+        max=MAX_MIN_ILLUMINANCE,
+        step=1,
+        mode=NumberSelectorMode.BOX,
+        unit_of_measurement="lx",
+    )
+)
+
+_ILLUMINANCE_ENTITY_SELECTOR = EntitySelector(
+    EntitySelectorConfig(domain="sensor", device_class="illuminance")
 )
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
@@ -229,6 +262,14 @@ class ZonnepanelenOptionsFlow(OptionsFlow):
     ) -> ConfigFlowResult:
         """Manage the options."""
         if user_input is not None:
+            # The illuminance entity selector returns "" when the field is
+            # cleared. Normalise to a missing key so the rest of the code
+            # can treat "not configured" as a single case.
+            if user_input.get(CONF_ILLUMINANCE_ENTITY) in ("", None):
+                user_input.pop(CONF_ILLUMINANCE_ENTITY, None)
+                # If the entity was cleared, drop the companion lux
+                # threshold too — it has no meaning without an entity.
+                user_input.pop(CONF_MIN_ILLUMINANCE, None)
             return self.async_create_entry(title="", data=user_input)
 
         current_interval = self.config_entry.options.get(
@@ -242,6 +283,19 @@ class ZonnepanelenOptionsFlow(OptionsFlow):
             self.config_entry.options.get(
                 CONF_UNDERPERFORMANCE_PERCENT,
                 int(UNDERPERFORMANCE_RATIO * 100),
+            )
+        )
+        current_min_missing = int(
+            self.config_entry.options.get(
+                CONF_MIN_MISSING_INVERTERS, DEFAULT_MIN_MISSING_INVERTERS
+            )
+        )
+        current_lux_entity = self.config_entry.options.get(
+            CONF_ILLUMINANCE_ENTITY, ""
+        )
+        current_min_lux = float(
+            self.config_entry.options.get(
+                CONF_MIN_ILLUMINANCE, DEFAULT_MIN_ILLUMINANCE
             )
         )
 
@@ -267,8 +321,17 @@ class ZonnepanelenOptionsFlow(OptionsFlow):
                 CONF_SCAN_INTERVAL, default=current_interval
             ): _SCAN_INTERVAL_SELECTOR,
             vol.Optional(
+                CONF_MIN_MISSING_INVERTERS, default=current_min_missing
+            ): _MIN_MISSING_INVERTERS_SELECTOR,
+            vol.Optional(
                 CONF_UNDERPERFORMANCE_PERCENT, default=current_percent
             ): _UNDERPERFORMANCE_SELECTOR,
+            vol.Optional(
+                CONF_ILLUMINANCE_ENTITY, default=current_lux_entity
+            ): _ILLUMINANCE_ENTITY_SELECTOR,
+            vol.Optional(
+                CONF_MIN_ILLUMINANCE, default=current_min_lux
+            ): _MIN_ILLUMINANCE_SELECTOR,
         }
         if panel_options:
             schema_dict[
