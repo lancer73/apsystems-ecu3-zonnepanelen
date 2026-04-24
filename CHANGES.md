@@ -1,8 +1,58 @@
 # Zonnepanelen integration — 2026.4 compatibility review
  
 Target: Home Assistant 2025.5 → 2026.4. Delivered as a drop-in replacement
-under `custom_components/zonnepanelen/`. Current version: **2.1.3**.
- 
+under `custom_components/zonnepanelen/`. Current version: **2.2.0**.
+
+## v2.2.0 — configurable problem-sensor thresholds
+
+The problem binary sensor had two hardcoded behaviours that made it
+too sensitive in practice:
+
+- A fixed 25% underperformance threshold, which fires during normal
+  partial shading.
+- No way to exclude panels that legitimately report 0 W — for example
+  a microinverter with only one panel physically attached, where the
+  unused channel always reads zero.
+
+Changes:
+
+- **Default threshold lowered from 25% to 10%.** `UNDERPERFORMANCE_RATIO`
+  in `const.py` changed from `0.25` to `0.10`. Existing installs pick
+  up the new default on upgrade automatically; no migration runs.
+- **`CONF_UNDERPERFORMANCE_PERCENT`** added to the options flow
+  (1–100, default 10). Stored as an integer percent; the binary sensor
+  converts to a ratio internally. Out-of-range or unparseable values
+  fall back to the default rather than raising, so a bad options write
+  can't break the sensor.
+- **`CONF_EXCLUDED_PANELS`** added to the options flow. Excluded panels
+  are skipped in both the underperformance check (not a candidate, not
+  part of the reference mean) and the missing-inverter check
+  (subtracted from `expected_inverters` when the panel has been seen
+  in a poll, so the high-water mark still counts reality).
+- **New binary-sensor attributes:** `underperformance_percent` (the
+  threshold in effect) and `excluded_panels` (sorted list of excluded
+  panel IDs). Visible in dev tools and usable from automations.
+- **UI placement.** Both options live only in the options flow, not
+  the initial config flow. At first configuration the coordinator
+  doesn't exist yet, so panel IDs aren't known. The panel picker shows
+  the union of currently-reporting panel IDs and already-excluded IDs,
+  so a panel can be un-excluded even while it's offline. The picker
+  is suppressed entirely when the union is empty (first-run state
+  before any successful poll) rather than rendering a dead empty
+  multi-select. `custom_value=False` — a typo in a panel ID would
+  silently exclude nothing, so free-form entry is deliberately
+  blocked.
+- **Strings** added to `strings.json` (Dutch) and mirrored to
+  `translations/en.json` and `translations/nl.json`.
+- **README** updated with the new *Options* section and a
+  troubleshooting entry for the dual-inverter-with-one-panel case.
+- **Version bumped** to `2.2.0` in `manifest.json` — new user-visible
+  feature and new config entry shape, but no breaking change.
+
+Files changed: `const.py`, `binary_sensor.py`, `config_flow.py`,
+`strings.json`, `translations/en.json`, `translations/nl.json`,
+`manifest.json`, `README.md`, `CHANGES.md`.
+
 ## v2.1.3 — manual device deletion from the UI
  
 Adds `async_remove_config_entry_device` to `__init__.py`. HA only shows
@@ -219,9 +269,6 @@ to `home-assistant/brands` if you want the icon to appear on older versions.
   dedicated dark variants if you want a tuned look.
 - **Persistent expected-inverter count.** `max_panel_count` is in-memory
   only and resets on HA restart, so "missing inverter" detection takes one
-  successful poll after restart before it can fire. Persisting to
-  `Store` would avoid this but adds write traffic on every update; deemed
-  not worth it for a local-polling integration that restarts infrequently.
   successful poll after restart before it can fire. Persisting to
   `Store` would avoid this but adds write traffic on every update; deemed
   not worth it for a local-polling integration that restarts infrequently.

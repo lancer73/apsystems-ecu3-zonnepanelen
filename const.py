@@ -1,4 +1,5 @@
 """Constants for the Zonnepanelen integration."""
+
 from __future__ import annotations
 
 from typing import Final
@@ -21,12 +22,14 @@ GLOBAL_KEYS: Final = frozenset({"state", "lifetime", "day", "online", "signal"})
 REQUEST_TIMEOUT: Final = 10  # seconds
 
 # ── Problem-detection thresholds ────────────────────────────────────────────
+
 # "More than two inverters not reporting" — strictly greater than this.
 MAX_MISSING_INVERTERS: Final = 2
 
 # A panel is underperforming if its power is below this ratio of the other
-# panels' mean power.
-UNDERPERFORMANCE_RATIO: Final = 0.25
+# panels' mean power. This is the default — the user can override it via
+# the options flow (CONF_UNDERPERFORMANCE_PERCENT).
+UNDERPERFORMANCE_RATIO: Final = 0.10
 
 # Only compare panel power when the *others'* mean is at least this many
 # watts, otherwise morning ramp-up / evening wind-down and shade produce
@@ -38,3 +41,17 @@ MIN_MEAN_POWER_FOR_RATIO_CHECK: Final = 25.0  # watts
 # sunrise — whichever comes first.
 DAYLIGHT_ELEVATION_DEG: Final = 10.0
 DAYLIGHT_POST_SUNRISE_MINUTES: Final = 60
+
+# ── Options-flow keys ───────────────────────────────────────────────────────
+
+# List of panel IDs excluded from both underperformance and missing-inverter
+# checks. Typical use: a microinverter that physically only has one panel
+# attached, so its unused channel reports 0 W permanently.
+CONF_EXCLUDED_PANELS: Final = "excluded_panels"
+
+# Underperformance threshold, expressed as a percent (1–100) in the UI —
+# easier to reason about than a 0.0–1.0 ratio. Stored as an int; the
+# binary sensor divides by 100 before comparing.
+CONF_UNDERPERFORMANCE_PERCENT: Final = "underperformance_percent"
+MIN_UNDERPERFORMANCE_PERCENT: Final = 1
+MAX_UNDERPERFORMANCE_PERCENT: Final = 100

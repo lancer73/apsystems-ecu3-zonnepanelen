@@ -1,4 +1,5 @@
 """Config and options flow for the Zonnepanelen integration."""
+
 from __future__ import annotations
 
 import logging
@@ -6,6 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from aiohttp import ClientError, ClientTimeout
+
 from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
@@ -15,14 +17,26 @@ from homeassistant.const import CONF_HOST, CONF_NAME, CONF_SCAN_INTERVAL
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectOptionDict,
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+)
 
 from .const import (
+    CONF_EXCLUDED_PANELS,
+    CONF_UNDERPERFORMANCE_PERCENT,
     DEFAULT_NAME,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    GLOBAL_KEYS,
     MAX_SCAN_INTERVAL,
+    MAX_UNDERPERFORMANCE_PERCENT,
     MIN_SCAN_INTERVAL,
+    MIN_UNDERPERFORMANCE_PERCENT,
     REQUEST_TIMEOUT,
+    UNDERPERFORMANCE_RATIO,
 )
 from .coordinator import validate_host
 
@@ -30,6 +44,13 @@ _LOGGER = logging.getLogger(__name__)
 
 _SCAN_INTERVAL_SELECTOR = vol.All(
     vol.Coerce(int), vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL)
+)
+
+_UNDERPERFORMANCE_SELECTOR = vol.All(
+    vol.Coerce(int),
+    vol.Range(
+        min=MIN_UNDERPERFORMANCE_PERCENT, max=MAX_UNDERPERFORMANCE_PERCENT
+    ),
 )
 
 STEP_USER_DATA_SCHEMA = vol.Schema(
@@ -67,7 +88,6 @@ async def _async_test_connection(hass: HomeAssistant, host: str) -> None:
     """Probe the ECU's two endpoints. Raises CannotConnect on failure."""
     session = async_get_clientsession(hass)
     timeout = ClientTimeout(total=REQUEST_TIMEOUT)
-
     for path, marker in (("/", "<tr>"), ("/index.php/realtimedata", "<tr ")):
         url = f"http://{host}{path}"
         try:
@@ -77,7 +97,6 @@ async def _async_test_connection(hass: HomeAssistant, host: str) -> None:
         except (ClientError, TimeoutError, OSError) as err:
             _LOGGER.debug("Probe failed for %s: %s", url, err)
             raise CannotConnect(f"cannot reach {url}: {err}") from err
-
         if marker not in text:
             raise CannotConnect(f"{url} did not return the expected content")
 
@@ -92,7 +111,6 @@ class ZonnepanelenConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle a flow initiated by the user."""
         errors: dict[str, str] = {}
-
         if user_input is not None:
             try:
                 host = validate_host(user_input[CONF_HOST])
@@ -102,7 +120,6 @@ class ZonnepanelenConfigFlow(ConfigFlow, domain=DOMAIN):
                 # Prevent the same ECU being configured twice.
                 await self.async_set_unique_id(host.lower())
                 self._abort_if_unique_id_configured()
-
                 try:
                     await _async_test_connection(self.hass, host)
                 except CannotConnect:
@@ -151,7 +168,6 @@ class ZonnepanelenConfigFlow(ConfigFlow, domain=DOMAIN):
                 await self.async_set_unique_id(host.lower())
                 self._abort_if_unique_id_mismatch(reason="wrong_account")
                 self._abort_if_unique_id_configured()
-
                 try:
                     await _async_test_connection(self.hass, host)
                 except CannotConnect:
@@ -215,15 +231,59 @@ class ZonnepanelenOptionsFlow(OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
-        current = self.config_entry.options.get(
+        current_interval = self.config_entry.options.get(
             CONF_SCAN_INTERVAL,
             self.config_entry.data.get(CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL),
         )
-        schema = vol.Schema(
-            {
-                vol.Optional(
-                    CONF_SCAN_INTERVAL, default=current
-                ): _SCAN_INTERVAL_SELECTOR,
-            }
+        current_excluded: list[str] = list(
+            self.config_entry.options.get(CONF_EXCLUDED_PANELS, []) or []
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        current_percent = int(
+            self.config_entry.options.get(
+                CONF_UNDERPERFORMANCE_PERCENT,
+                int(UNDERPERFORMANCE_RATIO * 100),
+            )
+        )
+
+        # Union of panel IDs currently reporting + already-excluded,
+        # so the user can un-exclude a panel even while it's offline.
+        coordinator = self.config_entry.runtime_data
+        reporting: set[str] = set()
+        if coordinator is not None and coordinator.data:
+            for key, value in coordinator.data.items():
+                if key in GLOBAL_KEYS or not isinstance(value, dict):
+                    continue
+                reporting.add(str(key))
+
+        panel_ids = sorted(reporting.union(current_excluded))
+        panel_options = [
+            SelectOptionDict(value=pid, label=pid) for pid in panel_ids
+        ]
+
+        # Only expose the panel selector when there's at least one option —
+        # an empty multi-select renders as a confusing dead UI element.
+        schema_dict: dict[Any, Any] = {
+            vol.Optional(
+                CONF_SCAN_INTERVAL, default=current_interval
+            ): _SCAN_INTERVAL_SELECTOR,
+            vol.Optional(
+                CONF_UNDERPERFORMANCE_PERCENT, default=current_percent
+            ): _UNDERPERFORMANCE_SELECTOR,
+        }
+        if panel_options:
+            schema_dict[
+                vol.Optional(
+                    CONF_EXCLUDED_PANELS, default=current_excluded
+                )
+            ] = SelectSelector(
+                SelectSelectorConfig(
+                    options=panel_options,
+                    multiple=True,
+                    mode=SelectSelectorMode.LIST,
+                    custom_value=False,
+                )
+            )
+
+        return self.async_show_form(
+            step_id="init", data_schema=vol.Schema(schema_dict)
+        )

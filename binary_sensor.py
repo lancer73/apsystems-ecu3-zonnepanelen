@@ -1,4 +1,5 @@
 """Problem binary sensor for the Zonnepanelen integration."""
+
 from __future__ import annotations
 
 import logging
@@ -19,6 +20,8 @@ from homeassistant.util import dt as dt_util
 
 from . import ZonnepanelenConfigEntry
 from .const import (
+    CONF_EXCLUDED_PANELS,
+    CONF_UNDERPERFORMANCE_PERCENT,
     DAYLIGHT_ELEVATION_DEG,
     DAYLIGHT_POST_SUNRISE_MINUTES,
     DOMAIN,
@@ -47,9 +50,9 @@ def _in_daylight_window(hass: HomeAssistant) -> bool:
     """Return True during the period in which we expect solar production.
 
     The window opens once EITHER condition holds:
-    - current sun elevation ≥ ``DAYLIGHT_ELEVATION_DEG``, or
-    - more than ``DAYLIGHT_POST_SUNRISE_MINUTES`` have passed since today's
-      local sunrise.
+      - current sun elevation ≥ ``DAYLIGHT_ELEVATION_DEG``, or
+      - more than ``DAYLIGHT_POST_SUNRISE_MINUTES`` have passed since today's
+        local sunrise.
     The window closes at sunset (elevation < 0 and past solar noon).
     """
     sun_state = hass.states.get("sun.sun")
@@ -73,7 +76,6 @@ def _in_daylight_window(hass: HomeAssistant) -> bool:
         # Polar day/night — no useful window. Err on the side of "closed" so
         # we don't spam problem alerts 24/7.
         return False
-
     return (
         sunrise + timedelta(minutes=DAYLIGHT_POST_SUNRISE_MINUTES)
         <= now
@@ -97,6 +99,7 @@ class ZonnepanelenProblemSensor(
         entry: ZonnepanelenConfigEntry,
     ) -> None:
         super().__init__(coordinator)
+        self._entry = entry
         self._attr_unique_id = f"{entry.entry_id}_problem"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"{entry.entry_id}_system")},
@@ -108,11 +111,44 @@ class ZonnepanelenProblemSensor(
 
     # ── helpers ──────────────────────────────────────────────────────────
 
+    def _excluded_panels(self) -> set[str]:
+        """Return the set of panel IDs the user has excluded from checks.
+
+        Read fresh on every call so that changes via the Options flow take
+        effect on the next coordinator tick without needing a reload.
+        (The entry is reloaded on options change anyway, but this keeps
+        the semantics obvious.)
+        """
+        raw = self._entry.options.get(CONF_EXCLUDED_PANELS, []) or []
+        return {str(pid) for pid in raw}
+
+    def _underperformance_ratio(self) -> float:
+        """Return the configured underperformance ratio, or the default.
+
+        Stored as a percent int in options; we convert here. Falls back to
+        the default on anything unparseable rather than raising — the
+        binary sensor should degrade gracefully, not refuse to evaluate.
+        """
+        raw = self._entry.options.get(CONF_UNDERPERFORMANCE_PERCENT)
+        if raw is None:
+            return UNDERPERFORMANCE_RATIO
+        try:
+            pct = int(raw)
+        except (TypeError, ValueError):
+            return UNDERPERFORMANCE_RATIO
+        if not 1 <= pct <= 100:
+            return UNDERPERFORMANCE_RATIO
+        return pct / 100.0
+
     def _panel_powers(self) -> dict[str, float]:
-        """Return {panel_id: power_W} for panels currently reporting."""
+        """Return {panel_id: power_W} for panels currently reporting,
+        minus any the user has excluded."""
+        excluded = self._excluded_panels()
         out: dict[str, float] = {}
         for key, value in self.coordinator.data.items():
             if key in GLOBAL_KEYS or not isinstance(value, dict):
+                continue
+            if key in excluded:
                 continue
             try:
                 out[key] = float(value.get("power", 0) or 0)
@@ -123,14 +159,30 @@ class ZonnepanelenProblemSensor(
     def _reporting_count(self) -> int:
         return len(self._panel_powers())
 
+    def _expected_count(self) -> int:
+        """High-water mark of panel count, reduced by any excluded panels
+        we've actually seen in the dataset."""
+        excluded = self._excluded_panels()
+        seen_excluded = sum(
+            1
+            for key in self.coordinator.data
+            if key in excluded and key not in GLOBAL_KEYS
+        )
+        return max(0, self.coordinator.max_panel_count - seen_excluded)
+
     def _missing_count(self) -> int:
-        return max(0, self.coordinator.max_panel_count - self._reporting_count())
+        return max(0, self._expected_count() - self._reporting_count())
 
     def _underperforming(self) -> list[str]:
-        """Return panel_ids whose power is < ratio × mean-of-others."""
+        """Return panel_ids whose power is < ratio × mean-of-others.
+
+        Excluded panels are not candidates and do not contribute to the
+        reference mean.
+        """
         powers = self._panel_powers()
         if len(powers) < 2:
             return []
+        ratio = self._underperformance_ratio()
         total = sum(powers.values())
         bad: list[str] = []
         for pid, power in powers.items():
@@ -139,7 +191,7 @@ class ZonnepanelenProblemSensor(
                 # Not enough production — comparing would just flag shaded
                 # panels during morning ramp-up. Spec: gate at 25 W.
                 continue
-            if power < UNDERPERFORMANCE_RATIO * others_mean:
+            if power < ratio * others_mean:
                 bad.append(pid)
         return bad
 
@@ -156,13 +208,10 @@ class ZonnepanelenProblemSensor(
             return None
 
         daylight = _in_daylight_window(self.hass)
-
         if daylight and self._missing_count() > MAX_MISSING_INVERTERS:
             return True
-
         if self._underperforming():
             return True
-
         return False
 
     @property
@@ -170,21 +219,24 @@ class ZonnepanelenProblemSensor(
         daylight = _in_daylight_window(self.hass)
         missing = self._missing_count()
         under = self._underperforming()
+        excluded = self._excluded_panels()
+        ratio = self._underperformance_ratio()
 
         reasons: list[str] = []
         if daylight and missing > MAX_MISSING_INVERTERS:
             reasons.append(f"{missing} inverter(s) not reporting")
         if under:
             reasons.append(
-                f"panel(s) producing <{int(UNDERPERFORMANCE_RATIO * 100)}% "
+                f"panel(s) producing <{int(ratio * 100)}% "
                 f"of others' mean: {', '.join(sorted(under))}"
             )
-
         return {
             "problem_reasons": reasons,
             "missing_inverter_count": missing,
             "reporting_inverters": self._reporting_count(),
-            "expected_inverters": self.coordinator.max_panel_count,
+            "expected_inverters": self._expected_count(),
             "underperforming_panels": sorted(under),
+            "underperformance_percent": int(ratio * 100),
+            "excluded_panels": sorted(excluded),
             "daylight_window_open": daylight,
         }

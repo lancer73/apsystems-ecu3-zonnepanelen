@@ -44,7 +44,14 @@
         "title": "Zonnepanelen Opties",
         "description": "Pas de instellingen aan",
         "data": {
-          "scan_interval": "Vernieuwingsinterval (seconden)"
+          "scan_interval": "Vernieuwingsinterval (seconden)",
+          "underperformance_percent": "Drempel onderpresterend paneel (%)",
+          "excluded_panels": "Uitgesloten panelen"
+        },
+        "data_description": {
+          "scan_interval": "Hoe vaak (in seconden) de gegevens worden opgehaald. Tussen 30 en 3600.",
+          "underperformance_percent": "Een paneel wordt als onderpresterend gemarkeerd als het vermogen onder dit percentage van het gemiddelde van de andere panelen komt. Standaard 10. Lagere waarden geven minder valse meldingen bij gedeeltelijke schaduw; hogere waarden vangen lichte degradatie eerder op.",
+          "excluded_panels": "Panelen die buiten de probleemcontrole blijven. Typisch gebruik: een micro-omvormer waarop fysiek maar één paneel is aangesloten, waardoor het ongebruikte kanaal permanent 0 W rapporteert."
         }
       }
     }
@@ -59,6 +66,8 @@
           "reporting_inverters": { "name": "Rapporterende omvormers" },
           "expected_inverters": { "name": "Verwachte omvormers" },
           "underperforming_panels": { "name": "Onderpresterende panelen" },
+          "underperformance_percent": { "name": "Drempel onderpresterend (%)" },
+          "excluded_panels": { "name": "Uitgesloten panelen" },
           "daylight_window_open": { "name": "Daglichtvenster open" }
         }
       }
