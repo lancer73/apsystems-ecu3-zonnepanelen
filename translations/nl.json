@@ -45,12 +45,18 @@
         "description": "Pas de instellingen aan",
         "data": {
           "scan_interval": "Vernieuwingsinterval (seconden)",
+          "min_missing_inverters": "Minimum ontbrekende omvormers voor melding",
           "underperformance_percent": "Drempel onderpresterend paneel (%)",
+          "illuminance_entity": "Lux-sensor (optioneel)",
+          "min_illuminance": "Minimum lux voor probleemvenster",
           "excluded_panels": "Uitgesloten panelen"
         },
         "data_description": {
           "scan_interval": "Hoe vaak (in seconden) de gegevens worden opgehaald. Tussen 30 en 3600.",
+          "min_missing_inverters": "De probleemsensor gaat aan wanneer minstens dit aantal omvormers niet rapporteert (binnen het daglichtvenster). Standaard 2. Bereik 1–50.",
           "underperformance_percent": "Een paneel wordt als onderpresterend gemarkeerd als het vermogen onder dit percentage van het gemiddelde van de andere panelen komt. Standaard 10. Lagere waarden geven minder valse meldingen bij gedeeltelijke schaduw; hogere waarden vangen lichte degradatie eerder op.",
+          "illuminance_entity": "Optionele illuminance-sensor uit een andere integratie. Als deze is ingesteld, is het probleemvenster alleen open wanneer zowel de zonnestand als deze sensor boven de drempel komen — handig om valse meldingen op donkere winterdagen te voorkomen. Als de sensor niet beschikbaar is, valt de controle terug op alleen de zonnestand en wordt er één waarschuwing gelogd.",
+          "min_illuminance": "Drempelwaarde voor de lux-sensor (100–10000 lx). Standaard 700. Alleen van toepassing als een lux-sensor is gekozen.",
           "excluded_panels": "Panelen die buiten de probleemcontrole blijven. Typisch gebruik: een micro-omvormer waarop fysiek maar één paneel is aangesloten, waardoor het ongebruikte kanaal permanent 0 W rapporteert."
         }
       }
@@ -65,9 +71,12 @@
           "missing_inverter_count": { "name": "Ontbrekende omvormers" },
           "reporting_inverters": { "name": "Rapporterende omvormers" },
           "expected_inverters": { "name": "Verwachte omvormers" },
+          "min_missing_inverters": { "name": "Minimum ontbrekende omvormers" },
           "underperforming_panels": { "name": "Onderpresterende panelen" },
           "underperformance_percent": { "name": "Drempel onderpresterend (%)" },
           "excluded_panels": { "name": "Uitgesloten panelen" },
+          "illuminance_entity": { "name": "Lux-sensor" },
+          "min_illuminance": { "name": "Minimum lux" },
           "daylight_window_open": { "name": "Daglichtvenster open" }
         }
       }

@@ -45,12 +45,18 @@
         "description": "Adjust settings",
         "data": {
           "scan_interval": "Update interval (seconds)",
+          "min_missing_inverters": "Minimum missing inverters to trigger",
           "underperformance_percent": "Underperformance threshold (%)",
+          "illuminance_entity": "Illuminance sensor (optional)",
+          "min_illuminance": "Minimum illuminance for problem window",
           "excluded_panels": "Excluded panels"
         },
         "data_description": {
           "scan_interval": "How often (in seconds) to poll the ECU. Between 30 and 3600.",
+          "min_missing_inverters": "The problem sensor fires when at least this many inverters are missing (within the daylight window). Default 2. Range 1–50.",
           "underperformance_percent": "A panel is flagged as underperforming when its power drops below this percentage of the other panels' mean. Default 10. Lower values reduce false alarms from partial shading; higher values catch milder degradation earlier.",
+          "illuminance_entity": "Optional illuminance sensor from another integration. When set, the problem window only opens when BOTH the sun-based check and this sensor are above the threshold — useful to suppress false alarms on dark winter days. If the sensor is unavailable, the integration falls back to sun-only and logs one warning.",
+          "min_illuminance": "Threshold for the illuminance sensor (100–10000 lx). Default 700. Only applies when an illuminance sensor is selected.",
           "excluded_panels": "Panels to exclude from the problem sensor. Typical use: a microinverter with only one panel physically attached, where the unused channel reports 0 W permanently."
         }
       }
@@ -65,9 +71,12 @@
           "missing_inverter_count": { "name": "Missing inverters" },
           "reporting_inverters": { "name": "Reporting inverters" },
           "expected_inverters": { "name": "Expected inverters" },
+          "min_missing_inverters": { "name": "Minimum missing inverters" },
           "underperforming_panels": { "name": "Underperforming panels" },
           "underperformance_percent": { "name": "Underperformance threshold (%)" },
           "excluded_panels": { "name": "Excluded panels" },
+          "illuminance_entity": { "name": "Illuminance sensor" },
+          "min_illuminance": { "name": "Minimum illuminance" },
           "daylight_window_open": { "name": "Daylight window open" }
         }
       }
